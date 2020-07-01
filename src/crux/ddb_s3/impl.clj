@@ -210,39 +210,47 @@
 
 (defn submit-tx
   [^DDBS3Configurator configurator ^DynamoDbAsyncClient ddb-client ^S3AsyncClient s3-client table-name bucket-name prefix tx-events]
-  (-> (select-next-txid ddb-client table-name)
-      (.thenCompose
-        (reify Function
-          (apply [_ tx]
-            (let [tx-date (Date.)
-                  key (format "%s%016x.%016x" prefix tx (.getTime tx-date))
-                  blob (.freeze configurator tx-events)]
-              (-> (.putObject s3-client (-> (PutObjectRequest/builder)
-                                            (.bucket bucket-name)
-                                            (.key key)
-                                            (->> (.putObject configurator))
-                                            ^PutObjectRequest (.build))
-                              (AsyncRequestBody/fromBytes blob))
-                  (.thenApply
-                    (reify Function
-                      (apply [_ _]
-                        #:crux.tx{:tx-id   tx
-                                  :tx-time tx-date}))))))))))
+  (let [start (System/currentTimeMillis)]
+    (log/info (pr-str {:task ::submit-tx :phase :start}))
+    (-> (select-next-txid ddb-client table-name)
+        (.thenCompose
+          (reify Function
+            (apply [_ tx]
+              (log/info (pr-str {:task ::submit-tx :phase :commit-tx :tx tx :ms (- (System/currentTimeMillis) start)}))
+              (let [tx-date (Date.)
+                    key (format "%s%016x.%016x" prefix tx (.getTime tx-date))
+                    blob (.freeze configurator tx-events)]
+                (-> (.putObject s3-client (-> (PutObjectRequest/builder)
+                                              (.bucket bucket-name)
+                                              (.key key)
+                                              (->> (.putObject configurator))
+                                              ^PutObjectRequest (.build))
+                                (AsyncRequestBody/fromBytes blob))
+                    (.thenApply
+                      (reify Function
+                        (apply [_ _]
+                          (log/info (pr-str {:task ::submit-tx :phase :end :ms (- (System/currentTimeMillis) start)}))
+                          #:crux.tx{:tx-id   tx
+                                    :tx-time tx-date})))))))))))
 
 (defn object->tx
   [^DDBS3Configurator configurator ^S3AsyncClient client ^S3Object object bucket-name prefix]
   (try
+    (log/info (pr-str {:task ::object->tx :phase :begin :key (.key object)}))
     (let [[tx date] (string/split (subs (.key object) (.length prefix)) #"\.")
           tx (Long/parseLong tx 16)
           date (Date. (Long/parseLong date 16))
+          start (System/currentTimeMillis)
           object @(.getObject client ^GetObjectRequest (-> (GetObjectRequest/builder)
                                                            (.bucket bucket-name)
                                                            (.key (.key object))
                                                            (.build))
-                              (AsyncResponseTransformer/toBytes))]
+                              (AsyncResponseTransformer/toBytes))
+          events (.thaw configurator (.asByteArray ^ResponseBytes object))]
+      (log/info (pr-str {:task ::object->tx :phase :end :ms (- (System/currentTimeMillis) start)}))
       #:crux.tx{:tx-id     tx
                 :tx-time   date
-                :tx-events (.thaw configurator (.asByteArray ^ResponseBytes object))})
+                :tx-events events})
     (catch Exception x
       (log/warn x (str "skipping invalid object from S3 with key: " (.key object)))
       nil)))

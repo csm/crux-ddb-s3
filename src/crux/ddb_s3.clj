@@ -29,6 +29,6 @@
                                        :crux.config/type :crux.config/string
                                        :doc "S3 bucket"}
                              ::prefix {:crux.config/type :crux.config/string
-                                       :default "tx"
+                                       :default "tx/"
                                        :doc "S3 prefix"}}
                       :deps #{::configurator}}})

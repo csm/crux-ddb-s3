@@ -236,7 +236,7 @@
 (defn object->tx
   [^DDBS3Configurator configurator ^S3AsyncClient client ^S3Object object bucket-name prefix]
   (try
-    (log/info (pr-str {:task ::object->tx :phase :begin :key (.key object)}))
+    (log/debug (pr-str {:task ::object->tx :phase :begin :key (.key object)}))
     (let [[tx date] (string/split (subs (.key object) (.length prefix)) #"\.")
           tx (Long/parseLong tx 16)
           date (Date. (Long/parseLong date 16))
@@ -247,10 +247,10 @@
                                                            (.build))
                               (AsyncResponseTransformer/toBytes))
           events (.thaw configurator (.asByteArray ^ResponseBytes object))]
-      (log/info (pr-str {:task ::object->tx :phase :end :ms (- (System/currentTimeMillis) start)}))
-      #:crux.tx{:tx-id     tx
-                :tx-time   date
-                :tx-events events})
+      (log/debug (pr-str {:task ::object->tx :phase :end :ms (- (System/currentTimeMillis) start)}))
+      {:crux.tx/tx-id           tx
+       :crux.tx/tx-time         date
+       :crux.tx.event/tx-events events})
     (catch Exception x
       (log/warn x (str "skipping invalid object from S3 with key: " (.key object)))
       nil)))

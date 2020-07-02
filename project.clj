@@ -1,4 +1,4 @@
-(defproject com.github.csm/crux-ddb-s3 "0.1.0-SNAPSHOT"
+(defproject com.github.csm/crux-ddb-s3 "0.1.0"
   :description "Crux TxLog on DynamoDB and S3"
   :url "https://github.com/csm/crux-ddb-s3"
   :license {:name "MIT"
